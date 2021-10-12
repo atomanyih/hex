@@ -7,11 +7,41 @@
     body {
       margin: 0;
       overflow: hidden;
+      /*background-color: black;*/
+    }
+
+    canvas {
+      /*animation: rotation 500s linear infinite;*/
+    }
+
+    @keyframes rotation {
+      from {
+        transform: rotate(0);
+      }
+
+      to {
+        transform: rotate(360deg);
+      }
     }
   </style>
+
+  <script src="perlin.js"></script>
 </head>
 <body>
 <script>
+  const lerp = (a, b, x) => clamp(a + x * (b - a), a, b)
+
+  const sinLow = x => {
+    x = x % (2 * 3.14159265) - 3.14159265;
+    if (x < -3.14159265) x += 6.28318531;
+    else if (x > 3.14159265) x -= 6.28318531;
+    if (x < 0) return 1.27323954 * x + .405284735 * x * x;
+    else return 1.27323954 * x - 0.405284735 * x * x;
+  };
+  const sin = (f, phi, t) => {
+    return sinLow(2 * Math.PI * f * t + 2 * Math.PI * phi)
+  };
+
   const clamp = (x, lowerlimit, upperlimit) => {
     if (x < lowerlimit)
       return lowerlimit;
@@ -28,12 +58,22 @@
     return val * val * (3 - 2 * val);
   }
 
+  const smoothClamp = (x, a, b) => {
+    return smoothstep(0, 1, (x - a) / (b - a)) * (b - a) + a;
+  }
+
   const smoothsquare = (f, phi, t) => {
     const tLoop = (t * f + phi + 0.25) % 1;
     return (smoothstep(0.15, 0.35, tLoop) * (1 - smoothstep(0.65, 0.85, tLoop))) * -2 + 1
   }
 
-  const SCALE_FACTOR = 2; // retina, I guess
+  const waveFn = (f, phi, t) => smoothsquare(f, phi, t) * sin(f / 100, phi, t)
+  // const waveFn = (f, phi, t) => (smoothsquare(f, phi, t) + sin(f / 10, phi, t)) /2
+  // const waveFn = (f, phi, t) => (smoothsquare(f, phi, t) * 0.9 + sin(f * 2, phi, t)) * 0.1
+
+  const SCALE_FACTOR = window.devicePixelRatio || 1; // retina, I guess
+
+  // const WINDOW_DIAGONAL =
 
   const CANVAS_WIDTH = window.innerWidth * SCALE_FACTOR;
   const CANVAS_HEIGHT = window.innerHeight * SCALE_FACTOR;
@@ -44,11 +84,16 @@
   document.body.appendChild(canvas);
 
   function grayscale(amt = 1) {
-    const value = Math.floor((1 - amt * 0.75) * 255)
+    const value = Math.floor((1 - amt) * 255)
     return `rgb(${value},${value},${value})`
   }
 
-  function drawHex(centerPoint, radius, openRadius, ctx) {
+  function drawHex(centerPoint, radius, openRadius, ctx, {
+    leaves,
+    gridLines,
+    innerCircle,
+    outerCircle
+  }) {
     // hexPoints.forEach((point) => {
     //   ctx.fillRect(point[0] - 1, point[1] - 1, 2, 2);
     // });
@@ -59,14 +104,16 @@
 
     ctx.beginPath();
 
-    ctx.lineWidth = 1;
-    // ctx.strokeStyle = grayscale(openRadius / innerRadius)
-    ctx.strokeStyle = grayscale(0.5)
+    ctx.lineWidth = outerCircle.lineWidth;
+    ctx.strokeStyle = outerCircle.strokeStyle
 
     ctx.ellipse(centerPoint[0], centerPoint[1], radius, radius, 0, 0, 2 * Math.PI)
     ctx.stroke();
 
     ctx.beginPath();
+
+    ctx.lineWidth = innerCircle.lineWidth;
+    ctx.strokeStyle = innerCircle.strokeStyle
 
     ctx.ellipse(centerPoint[0], centerPoint[1], openRadius, openRadius, 0, 0, 2 * Math.PI)
     ctx.stroke();
@@ -88,9 +135,8 @@
         centerPoint[1] + Math.sin((i + 0.5) / 6 * 2 * Math.PI) * openRadius,
       ]
 
-      ctx.lineWidth = 1;
-      // ctx.strokeStyle = grayscale((1 - openRadius / innerRadius) * 0.9 + 0.2)
-      ctx.strokeStyle = grayscale(0.5)
+      ctx.lineWidth = gridLines.lineWidth;
+      ctx.strokeStyle = gridLines.strokeStyle
 
       ctx.beginPath();
       ctx.moveTo(...centerPoint);
@@ -100,8 +146,8 @@
       )
       ctx.stroke();
 
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = '#000000'
+      ctx.lineWidth = leaves.lineWidth;
+      ctx.strokeStyle = leaves.strokeStyle
       ctx.beginPath();
       ctx.moveTo(...outerPoint1);
       ctx.lineTo(...innerPoint);
@@ -116,33 +162,17 @@
   const hexRadius = 100;
   const hexInnerRadius = Math.cos(2 * Math.PI / 12) * hexRadius;
 
-  function normalizeT(t, y, x) {
-    return t / PERIOD ;
-  }
-
-  function draw(t) {
+  function draw(image) {
     const ctx = canvas.getContext('2d');
-
-    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
 
     const startPoint = [0, 0];
     const gridX = hexRadius * 3;
 
-    ctx.strokeWidth = 2;
-
-    // const colors = ['#000000', '#FFFFFF']
-
-    for (let x = 0; x < CANVAS_WIDTH / gridX; x++) {
-      for (let y = 0; y < CANVAS_HEIGHT / hexInnerRadius + 1; y++) {
-        const normalizedT = normalizeT(t, y, x);
-        const v = smoothsquare(1, 0 ,normalizedT * 2) + y / 25 + x * Math.sin(t / 10000000 * Math.PI);
+    for (let x = 0; x < image.length; x++) {
+      const row = image[x]
+      for (let y = 0; y < row.length; y++) {
+        const v = row[y]
         const innerHexRadius = hexInnerRadius / 2 * v + hexInnerRadius / 2;
-
-        // const colorT = Math.floor(normalizedT);
-
-        // ctx.strokeStyle = colors[colorT % colors.length]
-
-        // console.log(colorT)
 
         drawHex(
           [
@@ -151,14 +181,84 @@
           ],
           hexRadius,
           innerHexRadius,
-          ctx
+          ctx,
+          {
+            innerCircle: {
+              lineWidth: 2,
+              strokeStyle: grayscale(0.3 + v * 0.7)
+            },
+            outerCircle: {
+              lineWidth: 1,
+              strokeStyle: grayscale(0.375)
+            },
+            gridLines: {
+              lineWidth: 1,
+              strokeStyle: grayscale(0.375)
+            },
+            leaves: {
+              lineWidth: 3,
+              strokeStyle: grayscale(0.9)
+            }
+          }
         );
       }
     }
   }
 
-  function loop(time) {
-    draw(time);
+  noise.seed(Math.random())
+
+  function loop(t) {
+    const gridX = hexRadius * 3;
+
+    const gridWidth = CANVAS_WIDTH / gridX;
+    const gridHeight = CANVAS_HEIGHT / hexInnerRadius + 1;
+    // const canvasDiagonal = Math.pow(CANVAS_WIDTH * CANVAS_WIDTH + CANVAS_HEIGHT * CANVAS_HEIGHT, 0.5)
+    // const gridWidth = canvasDiagonal / gridX;
+    // const gridHeight = canvasDiagonal / hexInnerRadius + 1;
+
+    let image = [];
+
+    for (let x = 0; x < gridWidth; x++) {
+      image[x] = []
+      for (let y = 0; y < gridHeight; y++) {
+        const normalizedT = t / PERIOD;
+        image[x][y] = smoothClamp(
+          // waveFn(1, 0, normalizedT * 2 + y / 25 + x * Math.sin(t / 10000))
+          // + (noise.perlin2(x + t / 50000, y)) * smoothsquare(1, 0, normalizedT),
+          smoothClamp(
+            1.5 * sin(1, y / gridHeight, normalizedT + Math.abs(x / gridWidth - 0.5))
+            * lerp(0.5, 1, noise.perlin2(x + t / 10000, y)),
+            -1,
+            1
+          ),
+          -1,
+          1
+        )
+        // image[x][y] = smoothClamp(noise.perlin2((x + t / 1000) /4, y / 4) * 1.5, -1, 1);
+      }
+    }
+
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT)
+
+    // ctx.save();
+    // // rotate around center of grid
+    // ctx.translate(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+    // // ctx.rotate(t / 20 * Math.PI / 180);
+    // ctx.rotate(t / 2000 * Math.PI / 180);
+    // ctx.translate(-canvasDiagonal / 2, -canvasDiagonal / 2);
+
+    // // debug transform
+    // ctx.fillStyle = 'white'
+    // ctx.fillRect(0, 0, gridRect[0], gridRect[1])
+    // ctx.fillStyle = 'black'
+    // ctx.fillRect(gridRect[0] / 2 - 10, gridRect[1] / 2 - 10, 20, 20)
+
+
+    draw(image);
+
+    ctx.restore();
+
     requestAnimationFrame(loop);
   }
 
