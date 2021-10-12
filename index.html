@@ -225,12 +225,8 @@
         image[x][y] = smoothClamp(
           // waveFn(1, 0, normalizedT * 2 + y / 25 + x * Math.sin(t / 10000))
           // + (noise.perlin2(x + t / 50000, y)) * smoothsquare(1, 0, normalizedT),
-          smoothClamp(
-            1.5 * sin(1, y / gridHeight, normalizedT + Math.abs(x / gridWidth - 0.5))
-            * lerp(0.5, 1, noise.perlin2(x + t / 10000, y)),
-            -1,
-            1
-          ),
+          1.5 * sin(1, sin(1, 0, y / gridHeight) * sin(1, 0, normalizedT / 100), normalizedT + Math.abs(x / gridWidth - 0.5))
+          * lerp(0.5, 1, noise.perlin2(x + t / 10000, y)),
           -1,
           1
         )
